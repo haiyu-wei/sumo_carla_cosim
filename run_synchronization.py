@@ -104,12 +104,13 @@ class SimulationSynchronization(object):
         # sumo-->carla sync
         # -----------------
         self.sumo.tick()
-        print(self.sumo.get_actor(smi) for smi in sumo_actor_id)
         # Spawning new sumo actors in carla (i.e, not controlled by carla).
         sumo_spawned_actors = self.sumo.spawned_actors - set(self.carla2sumo_ids.values())
         for sumo_actor_id in sumo_spawned_actors:
+            
             self.sumo.subscribe(sumo_actor_id)
             sumo_actor = self.sumo.get_actor(sumo_actor_id)
+            print(sumo_actor)
 
             carla_blueprint = BridgeHelper.get_carla_blueprint(sumo_actor, self.sync_vehicle_color)
             if carla_blueprint is not None:
