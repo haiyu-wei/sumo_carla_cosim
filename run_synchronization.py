@@ -14,15 +14,22 @@ Script to integrate CARLA and SUMO simulations
 # ==================================================================================================
 
 import argparse
+from ctypes import sizeof
 import logging
 import time
+import sys
+import os
+sys.path.append(os.path.join(os.environ.get("SUMO_HOME"), 'tools'))
+import traci
+import carla
+import collections
 
 # ==================================================================================================
 # -- find carla module -----------------------------------------------------------------------------
 # ==================================================================================================
 
 import glob
-import os
+
 import sys
 
 try:
@@ -55,7 +62,7 @@ from sumo_integration.sumo_simulation import SumoSimulation  # pylint: disable=w
 # -- synchronization_loop --------------------------------------------------------------------------
 # ==================================================================================================
 
-
+SumoPede = collections.namedtuple('SumoPede', 'type_id vclass transform signals extent color')
 class SimulationSynchronization(object):
     """
     SimulationSynchronization class is responsible for the synchronization of sumo and carla
@@ -82,7 +89,10 @@ class SimulationSynchronization(object):
 
         # Mapped actor ids.
         self.sumo2carla_ids = {}  # Contains only actors controlled by sumo.
+        self.sumo2carla_pede_ids = {}
         self.carla2sumo_ids = {}  # Contains only actors controlled by carla.
+        self.carla2sumo_pede_ids = {}
+        self.exist_pedes = set()
 
         BridgeHelper.blueprint_library = self.carla.world.get_blueprint_library()
         BridgeHelper.offset = self.sumo.get_net_offset()
@@ -92,7 +102,6 @@ class SimulationSynchronization(object):
         settings.synchronous_mode = True
         settings.fixed_delta_seconds = self.carla.step_length
         self.carla.world.apply_settings(settings)
-
         traffic_manager = self.carla.client.get_trafficmanager()
         traffic_manager.set_synchronous_mode(True)
 
@@ -104,16 +113,103 @@ class SimulationSynchronization(object):
         # sumo-->carla sync
         # -----------------
         self.sumo.tick()
-        # Spawning new sumo actors in carla (i.e, not controlled by carla).
-        sumo_spawned_actors = self.sumo.spawned_actors - set(self.carla2sumo_ids.values())
-        for sumo_actor_id in sumo_spawned_actors:
+        #carla_pede_id = 1
+
+        ###########################################################################
+        #print ("Checkpoint 1")
+        sumo_spawned_pede = self.sumo.spawned_pede
+        #print("Size of sumo_pede is: ", end='')
+        #print(len(sumo_spawned_pede))
+        #while len(self.exist_pedes)!=0:
+        #        self.carla.destroy_actor(self.exist_pedes.pop())
+        for sumo_pede_id in sumo_spawned_pede: 
+            if sumo_pede_id not in self.exist_pedes:
+                #print("exist_pedes is: ", end="")
+                #print(self.exist_pedes)
+                #self.sumo.subscribe_pedestrian(sumo_pede_id)
+                traci.person.subscribe(sumo_pede_id, [traci.constants.VAR_TYPE, traci.constants.VAR_VEHICLECLASS, traci.constants.VAR_COLOR,
+                traci.constants.VAR_LENGTH, traci.constants.VAR_WIDTH, traci.constants.VAR_HEIGHT,
+                traci.constants.VAR_POSITION3D, traci.constants.VAR_ANGLE, traci.constants.VAR_SLOPE,
+                traci.constants.VAR_SPEED])
+                
+                results = traci.person.getSubscriptionResults(sumo_pede_id)
+                type_id = results[traci.constants.VAR_TYPE]
+                #print(results)
+                vclass = results[traci.constants.VAR_VEHICLECLASS]
+                color = results[traci.constants.VAR_COLOR]
+                length = results[traci.constants.VAR_LENGTH]
+                width = results[traci.constants.VAR_WIDTH]
+                height = results[traci.constants.VAR_HEIGHT]
+                location = list(results[traci.constants.VAR_POSITION3D])
+                location[2] -= 10
+                #print("3d-location: ", end='')
+                #print(location[2])
+                rotation = [results[traci.constants.VAR_SLOPE], results[traci.constants.VAR_ANGLE], 0.0]
+                transform = carla.Transform(carla.Location(location[0], location[1], location[2]),
+                                            carla.Rotation(rotation[0], rotation[1], rotation[2]))
+                extent = carla.Vector3D(length / 2.0, width / 2.0, height / 2.0)
+                #print("Result is: ", end="")
+                #print(results)
+                #sumo_pede = SumoPede(type_id, vclass, transform, extent, color)
+                #carla_pede_blueprint = BridgeHelper.get_carla_pedestrian_blueprint(sumo_actor, self.sync_vehicle_color)
+                carla_pede_transform = BridgeHelper.get_carla_transform(transform, extent)
+                carla_pede_id = self.carla.spawn_pede(carla_pede_transform)
+                
+                ################################################
+                # pedestrian = self.carla.world.get_actor(carla_pede_id)
+                # pedestrian.start()
+
+                ################################################
+                #print("carla_pede_id is: ", end="")
+                #print(carla_pede_id)
+                if carla_pede_id != INVALID_ACTOR_ID:
+                    self.sumo2carla_pede_ids[sumo_pede_id] = carla_pede_id
+                self.exist_pedes.add(sumo_pede_id)
+            for sumo_pede_id in self.sumo2carla_pede_ids:
+                try:
+                    carla_pede_id = self.sumo2carla_pede_ids[sumo_pede_id]
+                    results = traci.person.getSubscriptionResults(sumo_pede_id)
+                    #print(traci.constants.VAR_LENGTH)
+                    length = results[traci.constants.VAR_LENGTH]
+                    width = results[traci.constants.VAR_WIDTH]
+                    height = results[traci.constants.VAR_HEIGHT]
+                    rotation = [results[traci.constants.VAR_SLOPE], results[traci.constants.VAR_ANGLE], 0.0]
+                    location = list(results[traci.constants.VAR_POSITION3D])
+                    location[2] += 1
+                    transform = carla.Transform(carla.Location(location[0], location[1], location[2]),
+                                            carla.Rotation(rotation[0], rotation[1], rotation[2]))
+                    extent = carla.Vector3D(length / 2.0, width / 2.0, height / 2.0)
+                    carla_pede_transform = BridgeHelper.get_carla_transform(transform, extent)
+                    self.carla.synchronize_pedestrian(carla_pede_id, carla_pede_transform, location)
+                except:
+                    pass
+
             
+            
+            
+            
+            
+            # Destroying sumo arrived actors (pede) in carla.
+            #for sumo_pede_id in self.sumo.destroyed_actors:
+            #    if sumo_actor_id in self.sumo2carla_ids:
+            #        self.carla.destroy_actor(self.sumo2carla_ids.pop(sumo_actor_id))
+
+        
+                
+        ###########################################################################
+        # Spawning new sumo actors in carla (i.e, not controlled by carla).
+        #print ("Checkpoint 2")
+        sumo_spawned_actors = self.sumo.spawned_actors - set(self.carla2sumo_ids.values())
+        #print("Size of sumo_actor is: ", end='')
+        #print(len(sumo_spawned_actors))
+        for sumo_actor_id in sumo_spawned_actors:
             self.sumo.subscribe(sumo_actor_id)
             sumo_actor = self.sumo.get_actor(sumo_actor_id)
-            print(sumo_actor)
 
             carla_blueprint = BridgeHelper.get_carla_blueprint(sumo_actor, self.sync_vehicle_color)
             if carla_blueprint is not None:
+                #print("Blueprint is: ", end="")
+                #print(carla_blueprint)
                 carla_transform = BridgeHelper.get_carla_transform(sumo_actor.transform,
                                                                    sumo_actor.extent)
 
@@ -122,7 +218,7 @@ class SimulationSynchronization(object):
                     self.sumo2carla_ids[sumo_actor_id] = carla_actor_id
             else:
                 self.sumo.unsubscribe(sumo_actor_id)
-
+                
         # Destroying sumo arrived actors in carla.
         for sumo_actor_id in self.sumo.destroyed_actors:
             if sumo_actor_id in self.sumo2carla_ids:
@@ -131,7 +227,8 @@ class SimulationSynchronization(object):
         # Updating sumo actors in carla.
         for sumo_actor_id in self.sumo2carla_ids:
             carla_actor_id = self.sumo2carla_ids[sumo_actor_id]
-
+            #print("Checkpoint 3")
+            #print(carla_actor_id)
             sumo_actor = self.sumo.get_actor(sumo_actor_id)
             carla_actor = self.carla.get_actor(carla_actor_id)
 
@@ -142,7 +239,6 @@ class SimulationSynchronization(object):
                                                                    sumo_actor.signals)
             else:
                 carla_lights = None
-
             self.carla.synchronize_vehicle(carla_actor_id, carla_transform, carla_lights)
 
         # Updates traffic lights in carla based on sumo information.
@@ -157,10 +253,28 @@ class SimulationSynchronization(object):
         # -----------------
         # carla-->sumo sync
         # -----------------
+        #print("Checkpoint ")
         self.carla.tick()
+
+        ###########################################################################
+        #carla_spawned_pedes = self.carla.spawned_pedes - set(self.sumo2carla_pede_ids.values())
+        #print("Size of carla_pede is: ", end='')
+        #print(len(carla_spawned_pedes))
+        #for carla_pede_id in carla_spawned_pedes:
+            #carla_pede = self.carla.get_actor(carla_pede_id)
+            #type_id = BridgeHelper.get_sumo_vtype(carla_pede)
+            #if type_id is not None:
+                #sumo_actor_id = self.sumo.spawn_(type_id, color)
+            #print("type_id is: ", end='')
+            #print(type_id)
+
+        ###########################################################################
+
 
         # Spawning new carla actors (not controlled by sumo)
         carla_spawned_actors = self.carla.spawned_actors - set(self.sumo2carla_ids.values())
+        #print("Size of carla_actors is: ", end='')
+        #print(len(carla_spawned_actors))
         for carla_actor_id in carla_spawned_actors:
             carla_actor = self.carla.get_actor(carla_actor_id)
 
@@ -243,9 +357,7 @@ def synchronization_loop(args):
     try:
         while True:
             start = time.time()
-
             synchronization.tick()
-
             end = time.time()
             elapsed = end - start
             if elapsed < args.step_length:

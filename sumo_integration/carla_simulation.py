@@ -12,6 +12,7 @@
 # ==================================================================================================
 
 import logging
+import random
 
 import carla  # pylint: disable=import-error
 
@@ -38,6 +39,11 @@ class CarlaSimulation(object):
         self._active_actors = set()
         self.spawned_actors = set()
         self.destroyed_actors = set()
+
+        # add pedestrians
+        self._active_pedes = set()
+        self.spawned_pedes = set()
+        self.destroyed_pedes = set()
 
         # Set traffic lights.
         self._tls = {}  # {landmark_id: traffic_ligth_actor}
@@ -175,6 +181,9 @@ class CarlaSimulation(object):
         self.destroyed_actors = self._active_actors.difference(current_actors)
         self._active_actors = current_actors
 
+        current_pedes = set([pedestrian.id for pedestrian in self.world.get_actors()])
+        self.spawned_pedes = current_pedes.difference(self._active_pedes)
+
     def close(self):
         """
         Closes carla client.
@@ -182,3 +191,78 @@ class CarlaSimulation(object):
         for actor in self.world.get_actors():
             if actor.type_id == 'traffic.traffic_light':
                 actor.freeze(False)
+
+    def generate_pedestrian_string(self):
+        number = random.randint(1, 49)
+        return f"walker.pedestrian.{number:04d}"
+
+    def spawn_pede(self, transform): #mine
+        """
+        Spawns a new actor.
+            :param blueprint: blueprint of the actor to be spawned.
+            :param transform: transform where the actor will be spawned.
+            :return: actor id if the actor is successfully spawned. Otherwise, INVALID_ACTOR_ID.
+        """
+        pedestrian_string = self.generate_pedestrian_string()
+        walker_controller_bp = self.world.get_blueprint_library().find(pedestrian_string)
+        #walker_controller_bp = self.world.get_blueprint_library().find('vehicle.bh.crossbike')
+        #print(walker_controller_bp)
+        transform = carla.Transform(transform.location + carla.Location(0, 0, SPAWN_OFFSET_Z),
+                                    transform.rotation)
+
+        batch = [
+            carla.command.SpawnActor(walker_controller_bp, transform).then(
+                carla.command.SetSimulatePhysics(carla.command.FutureActor, True))
+        ]
+
+        response = self.client.apply_batch_sync(batch, False)[0]
+        if response.error:
+            logging.error('Spawn carla pedestrian failed. %s', response.error)
+            return INVALID_ACTOR_ID
+        return response.actor_id
+
+
+    
+    def synchronize_pedestrian(self, pedestrian_id, transform, location):
+        """
+        Updates the state of a pedestrian in CARLA.
+        :param pedestrian_id: ID of the pedestrian actor to be updated.
+        :param transform: New transform (position and rotation) for the pedestrian.
+        """
+        pedestrian = self.world.get_actor(pedestrian_id)
+        if pedestrian is not None:
+            #print("Inside synchroniza_pede")
+            pedestrian.set_transform(transform)
+            ##############################################################
+            #x, y, z = location
+            #direction_vector = carla.Vector3D(x, y, z)
+            #control = carla.WalkerControl()
+            #control.direction = direction_vector
+            #control.speed = 10.0  # Speed in meters/second
+            #pedestrian.apply_control(control)
+            ##############################################################
+            # control = carla.WalkerBoneControl()
+            # first_tuple = ('crl_hand__R', carla.Transform(rotation=carla.Rotation(roll=90)))
+            # second_tuple = ('crl_hand__L', carla.Transform(rotation=carla.Rotation(roll=90)))
+            # control.bone_transforms = [first_tuple, second_tuple]
+            # pedestrian.apply_control(control)
+            ##############################################################
+            #pedestrian.apply_control(control)
+            #pedestrian.blend_pose(0)
+            ##############################################################
+            
+        else:
+            logging.error(f'Pedestrian {pedestrian_id} not found in CARLA.')
+
+
+    def remove_pedestrian(self, pedestrian_id):
+        """
+        Removes the specified pedestrian actor from CARLA.
+
+        :param pedestrian_id: ID of the pedestrian actor to remove.
+        """
+        pedestrian = self.world.get_actor(pedestrian_id)
+        if pedestrian is not None:
+            pedestrian.destroy()
+        else:
+            logging.error(f'Pedestrian {pedestrian_id} not found in CARLA.')

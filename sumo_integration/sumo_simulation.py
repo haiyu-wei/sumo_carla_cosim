@@ -509,9 +509,127 @@ class SumoSimulation(object):
         self.spawned_actors = set(traci.simulation.getDepartedIDList())
         self.destroyed_actors = set(traci.simulation.getArrivedIDList())
 
+
+        self.spawned_pede = set(traci.person.getIDList())
+        print("self.spawned_pede is: ")
+        print(self.spawned_pede)
+
     @staticmethod
     def close():
         """
         Closes traci client.
         """
         traci.close()
+
+    def synchronize_pedestrian_to_carla(sumo_pedestrian_id, carla_pedestrian_actor):
+        """
+        Synchronizes the state of a pedestrian in CARLA based on data from SUMO.
+
+        :param sumo_pedestrian_id: The ID of the pedestrian in SUMO.
+        :param carla_pedestrian_actor: The corresponding pedestrian actor in CARLA.
+        """
+        try:
+            # Retrieve pedestrian data from SUMO
+            position = traci.person.getPosition(sumo_pedestrian_id)  # Returns (x, y) position
+            angle = traci.person.getAngle(sumo_pedestrian_id)
+            speed = traci.person.getSpeed(sumo_pedestrian_id)
+
+            # Convert SUMO data to CARLA format if necessary
+            # Assuming here that both systems use similar coordinate systems
+            carla_position = carla.Location(x=position[0], y=position[1], z=0.0)  # z-coordinate might need adjustment
+            carla_rotation = carla.Rotation(pitch=0.0, yaw=angle, roll=0.0)
+
+            # Update CARLA pedestrian actor's state
+            carla_pedestrian_actor.set_location(carla_position)
+            carla_pedestrian_actor.set_rotation(carla_rotation)
+            # For speed, you might need to convert it to a velocity vector
+            # This is a simple example assuming the pedestrian moves forward along the yaw direction
+            carla_velocity = carla.Vector3D(x=speed * math.cos(math.radians(angle)), y=speed * math.sin(math.radians(angle)), z=0.0)
+            carla_pedestrian_actor.set_velocity(carla_velocity)
+        except Exception as e:
+            print(f"Error synchronizing pedestrian {sumo_pedestrian_id} to CARLA: {e}")
+
+
+
+
+    def spawn_pede(pedestrian_id, route_id, depart_time, depart_pos=0.0, pedestrian_type="DEFAULT_PEDTYPE"):
+        """
+        Spawns a new pedestrian actor in the simulation.
+
+        :param pedestrian_id: Unique identifier for the pedestrian.
+        :param route_id: The route the pedestrian should follow.
+        :param depart_time: The simulation time at which the pedestrian should start.
+        :param depart_pos: The position along the route where the pedestrian should appear.
+        :param pedestrian_type: The type of the pedestrian.
+        :return: True if the pedestrian is successfully spawned, False otherwise.
+        """
+        pede_id = 'ped1'
+        try:
+            traci.person.add(pede_id, route_id, depart=depart_time, pos=depart_pos, typeID=pedestrian_type)
+            return True
+        except traci.exceptions.TraCIException as e:
+            print(f"Error spawning pedestrian: {e}")
+            return False
+
+
+
+    def remove_pedestrian(pedestrian_id):
+        """
+        Removes a pedestrian actor from the simulation.
+
+        :param pedestrian_id: The ID of the pedestrian to remove.
+        """
+        try:
+            traci.person.remove(pedestrian_id)
+        except traci.exceptions.TraCIException as e:
+            print(f"Error removing pedestrian: {e}")
+
+
+
+    def unsubscribe_pedestrian(actor_id):
+        """
+        Unsubscribe the given pedestrian actor from receiving updated information each step.
+        """
+        traci.person.unsubscribe(actor_id)
+
+
+
+    def subscribe_pedestrian(actor_id):
+        """
+        Subscribe the given pedestrian actor to the following variables:
+            * Position3D (i.e., x, y, z).
+            * Angle.
+            * Speed.
+        """
+        traci.person.subscribe(actor_id, [
+        traci.constants.VAR_POSITION3D,  # 3D position of the pedestrian
+        traci.constants.VAR_ANGLE,       # The angle at which the pedestrian is moving
+        traci.constants.VAR_SPEED        # Speed of the pedestrian
+    ])
+
+
+    def get_pede(actor_id):
+        """
+        Accessor for sumo actor.
+        """
+        results = traci.person.getSubscriptionResults(actor_id)
+        #print("Result is: ", end="")
+        #print(results)
+        type_id = results[traci.constants.VAR_TYPE]
+        vclass = SumoActorClass(results[traci.constants.VAR_VEHICLECLASS])
+        #print(vclass)
+        color = results[traci.constants.VAR_COLOR]
+
+        length = results[traci.constants.VAR_LENGTH]
+        width = results[traci.constants.VAR_WIDTH]
+        height = results[traci.constants.VAR_HEIGHT]
+
+        location = list(results[traci.constants.VAR_POSITION3D])
+        rotation = [results[traci.constants.VAR_SLOPE], results[traci.constants.VAR_ANGLE], 0.0]
+        transform = carla.Transform(carla.Location(location[0], location[1], location[2]),
+                                    carla.Rotation(rotation[0], rotation[1], rotation[2]))
+
+        signals = results[traci.constants.VAR_SIGNALS]
+        extent = carla.Vector3D(length / 2.0, width / 2.0, height / 2.0)
+
+        return SumoActor(type_id, vclass, transform, signals, extent, color)
