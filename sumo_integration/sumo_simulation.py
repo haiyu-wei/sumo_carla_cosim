@@ -511,8 +511,8 @@ class SumoSimulation(object):
 
 
         self.spawned_pede = set(traci.person.getIDList())
-        print("self.spawned_pede is: ")
-        print(self.spawned_pede)
+        # print("self.spawned_pede is: ")
+        # print(self.spawned_pede)
 
     @staticmethod
     def close():

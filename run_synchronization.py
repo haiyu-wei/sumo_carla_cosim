@@ -183,33 +183,18 @@ class SimulationSynchronization(object):
                     self.carla.synchronize_pedestrian(carla_pede_id, carla_pede_transform, location)
                 except:
                     pass
-
-            
-            
-            
-            
-            
-            # Destroying sumo arrived actors (pede) in carla.
-            #for sumo_pede_id in self.sumo.destroyed_actors:
-            #    if sumo_actor_id in self.sumo2carla_ids:
-            #        self.carla.destroy_actor(self.sumo2carla_ids.pop(sumo_actor_id))
-
         
                 
         ###########################################################################
         # Spawning new sumo actors in carla (i.e, not controlled by carla).
-        #print ("Checkpoint 2")
         sumo_spawned_actors = self.sumo.spawned_actors - set(self.carla2sumo_ids.values())
-        #print("Size of sumo_actor is: ", end='')
-        #print(len(sumo_spawned_actors))
+
         for sumo_actor_id in sumo_spawned_actors:
             self.sumo.subscribe(sumo_actor_id)
             sumo_actor = self.sumo.get_actor(sumo_actor_id)
 
             carla_blueprint = BridgeHelper.get_carla_blueprint(sumo_actor, self.sync_vehicle_color)
             if carla_blueprint is not None:
-                #print("Blueprint is: ", end="")
-                #print(carla_blueprint)
                 carla_transform = BridgeHelper.get_carla_transform(sumo_actor.transform,
                                                                    sumo_actor.extent)
 
@@ -227,8 +212,7 @@ class SimulationSynchronization(object):
         # Updating sumo actors in carla.
         for sumo_actor_id in self.sumo2carla_ids:
             carla_actor_id = self.sumo2carla_ids[sumo_actor_id]
-            #print("Checkpoint 3")
-            #print(carla_actor_id)
+
             sumo_actor = self.sumo.get_actor(sumo_actor_id)
             carla_actor = self.carla.get_actor(carla_actor_id)
 
@@ -255,22 +239,6 @@ class SimulationSynchronization(object):
         # -----------------
         #print("Checkpoint ")
         self.carla.tick()
-
-        ###########################################################################
-        #carla_spawned_pedes = self.carla.spawned_pedes - set(self.sumo2carla_pede_ids.values())
-        #print("Size of carla_pede is: ", end='')
-        #print(len(carla_spawned_pedes))
-        #for carla_pede_id in carla_spawned_pedes:
-            #carla_pede = self.carla.get_actor(carla_pede_id)
-            #type_id = BridgeHelper.get_sumo_vtype(carla_pede)
-            #if type_id is not None:
-                #sumo_actor_id = self.sumo.spawn_(type_id, color)
-            #print("type_id is: ", end='')
-            #print(type_id)
-
-        ###########################################################################
-
-
         # Spawning new carla actors (not controlled by sumo)
         carla_spawned_actors = self.carla.spawned_actors - set(self.sumo2carla_ids.values())
         #print("Size of carla_actors is: ", end='')
