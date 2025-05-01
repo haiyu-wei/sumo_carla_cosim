@@ -210,9 +210,14 @@ class CarlaSimulation(object):
         transform = carla.Transform(transform.location + carla.Location(0, 0, SPAWN_OFFSET_Z),
                                     transform.rotation)
 
+        walker_control_speed = carla.WalkerControl()
+        walker_control_speed.speed = 2
+
         batch = [
             carla.command.SpawnActor(walker_controller_bp, transform).then(
-                carla.command.SetSimulatePhysics(carla.command.FutureActor, True))
+                carla.command.SetSimulatePhysics(carla.command.FutureActor, True)).then(
+                    carla.command.ApplyWalkerControl(carla.command.FutureActor, walker_control_speed)
+                )
         ]
 
         response = self.client.apply_batch_sync(batch, False)[0]
@@ -231,25 +236,7 @@ class CarlaSimulation(object):
         """
         pedestrian = self.world.get_actor(pedestrian_id)
         if pedestrian is not None:
-            #print("Inside synchroniza_pede")
             pedestrian.set_transform(transform)
-            ##############################################################
-            #x, y, z = location
-            #direction_vector = carla.Vector3D(x, y, z)
-            #control = carla.WalkerControl()
-            #control.direction = direction_vector
-            #control.speed = 10.0  # Speed in meters/second
-            #pedestrian.apply_control(control)
-            ##############################################################
-            # control = carla.WalkerBoneControl()
-            # first_tuple = ('crl_hand__R', carla.Transform(rotation=carla.Rotation(roll=90)))
-            # second_tuple = ('crl_hand__L', carla.Transform(rotation=carla.Rotation(roll=90)))
-            # control.bone_transforms = [first_tuple, second_tuple]
-            # pedestrian.apply_control(control)
-            ##############################################################
-            #pedestrian.apply_control(control)
-            #pedestrian.blend_pose(0)
-            ##############################################################
             
         else:
             logging.error(f'Pedestrian {pedestrian_id} not found in CARLA.')
