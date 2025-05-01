@@ -211,7 +211,7 @@ class CarlaSimulation(object):
                                     transform.rotation)
 
         walker_control_speed = carla.WalkerControl()
-        walker_control_speed.speed = 2
+        walker_control_speed.speed = 1
 
         batch = [
             carla.command.SpawnActor(walker_controller_bp, transform).then(
