@@ -212,6 +212,9 @@ class CarlaSimulation(object):
 
         walker_control_speed = carla.WalkerControl()
         walker_control_speed.speed = 1
+        pedestrian_heading=90
+        rotation = carla.Rotation(0,pedestrian_heading,0)
+        walker_control_speed.direction = rotation.get_forward_vector()
 
         batch = [
             carla.command.SpawnActor(walker_controller_bp, transform).then(
